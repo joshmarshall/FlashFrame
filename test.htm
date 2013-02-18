@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <title>TESTING PLAYER</title>
+    <style>
+      .progress {
+        background-color: #CCC;
+        width: 636px;
+        height: 10px;
+        border: 2px solid #000;
+        border-radius: 4px;
+      }
+
+      .progress-bar {
+        width: 0;
+        height: 100%;
+        top: -10px;
+        position: relative;
+        background-color: orange;
+      }
+
+      .buffer-bar {
+        width: 0;
+        height: 100%;
+        position: relative;
+        background-color: blue;
+      }
+    </style>
+
+  </head>
+
+  <body>
+    <div id="player"></div>
+
+    <div class='progress'>
+      <div class='buffer-bar'></div>
+      <div class='progress-bar'></div>
+    </div>
+
+    <div class='controls'>
+      <button class='skip-backward'>Skip &laquo;</button>
+      <button class='play'>Play</button>
+      <button class='pause'>Pause</button>
+      <button class='skip-forward'>Skip &raquo;</button>
+      <span>
+        <span class='current-time'>0</span> / <span class='duration'>0</span> seconds
+      </span>
+    </div>
+
+    <script src="http://ajax.googleapis.com/ajax/libs/swfobject/2.2/swfobject.js"></script>
+    <script src="http://ajax.googleapis.com/ajax/libs/jquery/1.9.1/jquery.min.js"></script>
+
+    <script>
+
+      var player,
+        foobar,
+        lastTime = 0,
+        duration = 0,
+        videoUrl = "http://ia600406.us.archive.org/27/" +
+          "items/BigBuckBunny_442/film0001_512kb.mp4",
+
+      // player function namespace
+
+      foobar = {
+        playerLoaded: function() {
+          player = $("#player")[0];
+          player.setSource(videoUrl);
+          lastTime = 0;
+          $('.play').bind('click', function() {
+            player.play();
+          });
+          $('.pause').bind('click', function() {
+            player.pause();
+          });
+          $('.skip-forward').bind('click', function() {
+            var next = lastTime + 30;
+            if (next > duration) {
+              next = duration;
+            }
+            player.seek(next);
+          });
+          $('.skip-backward').bind('click', function() {
+            var previous = lastTime - 30;
+            if (previous < 0 ) {
+              previous = 0;
+            }
+            player.seek(previous);
+          });
+        },
+
+        durationChange: function(newDuration) {
+          duration = newDuration;
+          $('.duration').text(Math.round(newDuration));
+        },
+
+        currentTime: function(time) {
+          lastTime = time;
+          $('.current-time').text(Math.round(time));
+        },
+
+        playBuffered: function(bufferedPercent) {
+          $('.buffer-bar').css('width', (bufferedPercent * 100) + '%');
+        },
+
+        playProgress: function(progressPercent) {
+          $('.progress-bar').css('width', (progressPercent * 100) + '%');
+        }
+      };
+
+      $(function() {
+        var params = {
+            allowscriptaccess: "always",
+            allowfullscreen: true,
+            wmode: "opaque"
+          },
+          flashvars = {
+            namespace: "foobar" 
+          },
+          attributes = {
+            id: "player",
+            name: "player"
+          };
+        swfobject.embedSWF("Player.swf?" + new Date().getTime(), "player", 640, 360, "10.1",
+        false, flashvars, params, attributes, function(result) {
+          if (!result.success) {
+            console.log("FAILED TO LOAD FLASH!");
+            return;
+          }
+        });
+      });
+    </script>
+  </body>
+</html>
