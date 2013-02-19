@@ -62,6 +62,9 @@
       // player function namespace
 
       foobar = {
+        log: function() {
+         console.log(arguments);
+        },
         playerLoaded: function() {
           player = $("#player")[0];
           player.setSource(videoUrl);
@@ -111,7 +114,7 @@
         var params = {
             allowscriptaccess: "always",
             allowfullscreen: true,
-            wmode: "opaque"
+            wmode: "direct"
           },
           flashvars = {
             namespace: "foobar" 

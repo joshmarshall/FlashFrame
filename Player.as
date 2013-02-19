@@ -8,40 +8,50 @@ package
     import flash.display.Bitmap;
     import flash.net.NetStream;
     import flash.net.NetConnection;
+    import flash.geom.Rectangle;
     import flash.events.NetStatusEvent;
     import flash.events.MouseEvent;
     import flash.events.Event;
     import flash.events.IOErrorEvent;
     import flash.events.TimerEvent;
+    import flash.events.StageVideoEvent;
+    import flash.events.StageVideoAvailabilityEvent;
+    import flash.events.VideoEvent;
     import flash.media.Video;
+    import flash.media.StageVideo;
+    import flash.media.StageVideoAvailability;
     import flash.utils.Timer;
 
     public class Player extends Sprite
     {
-        public var netStream:NetStream;
-        public var netConnection:NetConnection;
-        public var extNamespace:String;
+        private var netStream:NetStream;
+        private var netConnection:NetConnection;
+        private var extNamespace:String;
 
-        public var videoPlayer:Video;
-        public var videoDuration:Number;
-        public var videoPosition:Number = 0;
-        public var videoSize:Number = 0;
-        public var videoLoaded:Number = 0;
-        public var videoWidth:Number;
-        public var videoHeight:Number;
-        public var videoAspect:Number;
+        private var videoPlayer:Video;
+        private var videoDuration:Number;
+        private var videoPosition:Number = 0;
+        private var videoSize:Number = 0;
+        private var videoLoaded:Number = 0;
+        private var videoWidth:Number;
+        private var videoHeight:Number;
+        private var videoAspect:Number;
 
-        public var stageWidth:Number;
-        public var stageHeight:Number;
-        public var stageAspect:Number;
+        private var stageWidth:Number;
+        private var stageHeight:Number;
+        private var stageAspect:Number;
+        private var stageVideo:StageVideo;
+        private var stageVideoViewPort:Rectangle = new Rectangle(0, 0, 0, 0);
+        private var usingStageVideo:Boolean;
+        private var videoRenderState:String;
 
-        public var autoPlay:Boolean = false;
-        public var isPlaying:Boolean = false;
-        public var hasStarted:Boolean = false;
+        private var autoPlay:Boolean = false;
+        private var isPlaying:Boolean = false;
+        private var hasStarted:Boolean = false;
 
-        public var videoFile:String;
+        private var videoFile:String;
         private var useExternalCall:Boolean = true;
-        public var timer:Timer;
+        private var timer:Timer;
 
         public function Player():void {
             Security.allowDomain("*");
@@ -55,21 +65,21 @@ package
             }
         }
 
-        public function setupStage():void {
-            this.stage.align = StageAlign.TOP_LEFT;
-            this.stage.scaleMode = StageScaleMode.NO_SCALE;
+        private function setupStage():void {
+            stage.align = StageAlign.TOP_LEFT;
+            stage.scaleMode = StageScaleMode.NO_SCALE;
             var accuracy:Number = 10;
 
-            stageWidth = this.stage.stageWidth;
-            stageHeight = this.stage.stageHeight;
-            stageAspect = Math.round( (stageWidth / stageHeight) * accuracy ) / accuracy;
+            stageWidth = videoWidth = stage.stageWidth;
+            stageHeight = videoHeight = stage.stageHeight;
+            stageAspect = videoAspect = Math.round( (stageWidth / stageHeight) * accuracy ) / accuracy;
 
-            this.graphics.beginFill(0x000000);
-            this.graphics.drawRect(0, 0, stageWidth, stageHeight);
-            this.graphics.endFill();
+            graphics.beginFill(0x000000);
+            graphics.drawRect(0, 0, stageWidth, stageHeight);
+            graphics.endFill();
         }
 
-        public function setupPlayer():void {
+        private function setupPlayer():void {
             var autoPlayStr:String = getParam("autoplay");
             if (autoPlayStr == "true") {
                 autoPlay = true;
@@ -81,13 +91,14 @@ package
             }
             videoFile = getParam("video");
             videoPlayer = new Video();
-            addChild(videoPlayer);
-
-            this.stage.addEventListener(MouseEvent.MOUSE_OVER,
+            stage.addEventListener(StageVideoAvailabilityEvent.STAGE_VIDEO_AVAILABILITY,
+                onStageVideoAvailabilityChange);
+            videoPlayer.addEventListener(VideoEvent.RENDER_STATE, onVideoRenderStateChange);
+            stage.addEventListener(Event.RESIZE, onResize);
+            stage.addEventListener(MouseEvent.MOUSE_OVER,
                                         screenOverHandler);
-            this.stage.addEventListener(Event.MOUSE_LEAVE,
+            stage.addEventListener(Event.MOUSE_LEAVE,
                                         screenOutHandler);
-            setSize(stageWidth, stageHeight);
 
             netConnection = new NetConnection();
             netConnection.addEventListener(NetStatusEvent.NET_STATUS,
@@ -106,28 +117,7 @@ package
                     videoWidth = info.width;
                     videoHeight = info.height;
                     videoAspect = Math.round( (videoWidth / videoHeight ) * accuracy ) / accuracy;
-                    var scaled:Number = 1;
-
-                    var positionPlayer:Boolean = false;
-
-                    if (videoWidth == stageWidth &&
-                        videoHeight == stageHeight){
-                        setSize(videoWidth, videoHeight);
-                    } else if (videoAspect == stageAspect) {
-                        setSize(stageWidth, stageHeight);
-                        videoPlayer.smoothing = true;
-                    } else if (videoAspect > stageAspect) {
-                        // video is wider than stage
-                        scaled = stageWidth/videoAspect;
-                        setSize(stageWidth, Math.round(scaled));
-                        videoPlayer.smoothing = true;
-                    } else {
-                        // video is taller than stage
-                        scaled = stageHeight*videoAspect;
-                        setSize(scaled, stageHeight);
-                        videoPlayer.smoothing = true;
-                        positionPlayer = true;
-                    }
+                    resize();
                     extCall('durationChange', [videoDuration]);
                 },
 
@@ -137,16 +127,59 @@ package
 
             }
             netStream.client = client;
-            videoPlayer.attachNetStream(netStream);
+            //videoPlayer.attachNetStream(netStream);
+            resize();
         }
 
-        public function setupTimer():void {
+        private function onResize(resizeEvent:Event):void {
+            resize();
+        }
+
+        private function resize():void {
+            var accuracy:Number = 10;
+            stageWidth = stage.stageWidth;
+            stageHeight = stage.stageHeight;
+            stageAspect = Math.round( (stageWidth / stageHeight) * accuracy ) / accuracy;
+            setSize(stageWidth, stageHeight);
+        }
+
+        private function onStageVideoAvailabilityChange(stageEvent:StageVideoAvailabilityEvent):void {
+            var wasUsingStageVideo:Boolean = usingStageVideo == true;
+            usingStageVideo = stageEvent.availability == StageVideoAvailability.AVAILABLE;
+            extCall("log", ["STAGE VIDEO AVAILABLE: " + usingStageVideo]);
+            if (usingStageVideo) {
+                if (stageVideo == null) {
+                    stageVideo = stage.stageVideos[0];
+                    stageVideo.addEventListener(StageVideoEvent.RENDER_STATE, onStageVideoRenderStateChange);
+                }
+                stageVideo.attachNetStream(netStream);
+                if (!wasUsingStageVideo) {
+                    // stage video has become available
+                    stage.removeChild(videoPlayer);
+                }
+            } else {
+                videoPlayer.attachNetStream(netStream);
+                stage.addChild(videoPlayer);
+            }
+        }
+
+        private function onStageVideoRenderStateChange(stageVideoEvent:StageVideoEvent):void {
+            resize();
+            extCall("log", ["STAGE RENDER STATE: " + stageVideoEvent.status]);
+        }
+
+        private function onVideoRenderStateChange(videoEvent:VideoEvent):void {
+            resize();
+            extCall("log", ["RENDER STATE: " + videoEvent.status]);
+        }
+
+        private function setupTimer():void {
             timer = new Timer(50);
             timer.addEventListener(TimerEvent.TIMER, timedUpdateHandler);
             timer.start()
         }
 
-        public function setupCallbacks():void {
+        private function setupCallbacks():void {
             if (ExternalInterface.available) {
                 try {
                     ExternalInterface.addCallback("setSource", setSource);
@@ -159,7 +192,7 @@ package
             }
         }
 
-        public function timedUpdateHandler(event:TimerEvent):void {
+        private function timedUpdateHandler(event:TimerEvent):void {
             if (netStream.bytesLoaded != videoLoaded) {
                 videoLoaded = netStream.bytesLoaded;
                 var bufferPercent:Number = videoLoaded / videoSize;
@@ -186,23 +219,49 @@ package
             }
         }
 
-        public function setSize(vWidth:Number, vHeight:Number):void {
-            videoPlayer.width = vWidth;
-            videoPlayer.height = vHeight;
-            if (vWidth != stageWidth || vHeight != stageHeight) {
-                var lPad:Number = 0;
-                var tPad:Number = 0;
-                lPad = Math.round( (stageWidth-videoPlayer.width)/2 );
-                tPad = Math.round( (stageHeight-videoPlayer.height)/2 );
-                videoPlayer.x = lPad;
-                videoPlayer.y = tPad;
+        public function setSize(newWidth:Number, newHeight:Number):void {
+
+            var smoothing:Boolean = false;
+            var leftPadding:Number = 0;
+            var topPadding:Number = 0;
+
+            if (videoWidth == stageWidth &&
+                videoHeight == stageHeight){
+                newWidth = videoWidth;
+                newHeight = videoHeight;
+            } else if (videoAspect == stageAspect) {
+                smoothing = true;
+            } else if (videoAspect > stageAspect) {
+                // video is wider than stage
+                newHeight = Math.round(stageWidth / videoAspect);
+                newWidth = stageWidth;
+                smoothing = true;
             } else {
-                videoPlayer.x = 0;
-                videoPlayer.y = 0;
+                // video is taller than stage
+                newWidth = stageHeight * videoAspect;
+                newHeight = stageHeight;
+                smoothing = true;
+            }
+            if (newWidth != stageWidth || newHeight != stageHeight) {
+                leftPadding = Math.round( (stageWidth-videoPlayer.width)/2 );
+                topPadding = Math.round( (stageHeight-videoPlayer.height)/2 );
+            }
+            extCall("log", ["NEW PIXELS: " + newWidth + "x" + newHeight + ", (" + leftPadding + ", " + topPadding + ")"]);
+            if (usingStageVideo) {
+                stageVideoViewPort.x = leftPadding;
+                stageVideoViewPort.y = topPadding;
+                stageVideoViewPort.width = newWidth;
+                stageVideoViewPort.height = newHeight;
+                stageVideo.viewPort = stageVideoViewPort;
+            } else {
+                videoPlayer.x = leftPadding;
+                videoPlayer.y = topPadding;
+                videoPlayer.width = newWidth;
+                videoPlayer.height = newHeight;
             }
         }
 
-        public function netStatusHandler(event:NetStatusEvent):void
+        private function netStatusHandler(event:NetStatusEvent):void
         {
             switch(event.info.code) {
                 case "NetStream.Play.StreamNotFound":
@@ -222,11 +281,11 @@ package
 
         // OSD Handlers
 
-        public function screenOverHandler(event:MouseEvent):void {
+        private function screenOverHandler(event:MouseEvent):void {
             // mouse move events?
         }
 
-        public function screenOutHandler(event:Event):void {
+        private function screenOutHandler(event:Event):void {
             // mouse move events?
         }
 
@@ -280,7 +339,7 @@ package
             extCall("currentTime", [seekTime]);
         }
 
-        public function reset():void {
+        private function reset():void {
             if (isPlaying) {
                 stop();
             }
@@ -291,16 +350,16 @@ package
 
         // UTILITIES
 
-        public function getParam(key:String):String {
-            for (var keyStr:String in this.loaderInfo.parameters) {
+        private function getParam(key:String):String {
+            for (var keyStr:String in loaderInfo.parameters) {
                 if (keyStr == key) {
-                    return this.loaderInfo.parameters[keyStr];
+                    return loaderInfo.parameters[keyStr];
                 }
             }
             return "";
         }
 
-        public function extCall(method:String, args:Array):void {
+        private function extCall(method:String, args:Array):void {
             if (ExternalInterface.available && useExternalCall) {
                 args.unshift(extNamespace+method);
                 ExternalInterface.call.apply(this, args);
