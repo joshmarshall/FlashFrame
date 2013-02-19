@@ -258,6 +258,7 @@ package
                 videoPlayer.y = topPadding;
                 videoPlayer.width = newWidth;
                 videoPlayer.height = newHeight;
+                videoPlayer.smoothing = smoothing;
             }
         }
 
