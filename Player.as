@@ -22,6 +22,7 @@ package
     import flash.media.StageVideoAvailability;
     import flash.utils.Timer;
 
+    [SWF(backgroundColor="#000000")]
     public class Player extends Sprite
     {
         private var netStream:NetStream;
@@ -73,10 +74,6 @@ package
             stageWidth = videoWidth = stage.stageWidth;
             stageHeight = videoHeight = stage.stageHeight;
             stageAspect = videoAspect = Math.round( (stageWidth / stageHeight) * accuracy ) / accuracy;
-
-            graphics.beginFill(0x000000);
-            graphics.drawRect(0, 0, stageWidth, stageHeight);
-            graphics.endFill();
         }
 
         private function setupPlayer():void {
@@ -117,6 +114,7 @@ package
                     videoWidth = info.width;
                     videoHeight = info.height;
                     videoAspect = Math.round( (videoWidth / videoHeight ) * accuracy ) / accuracy;
+                    log("VIDEO SIZE INFO: " + videoWidth + "x" + videoHeight);
                     resize();
                     extCall('durationChange', [videoDuration]);
                 },
@@ -127,7 +125,6 @@ package
 
             }
             netStream.client = client;
-            //videoPlayer.attachNetStream(netStream);
             resize();
         }
 
@@ -146,7 +143,7 @@ package
         private function onStageVideoAvailabilityChange(stageEvent:StageVideoAvailabilityEvent):void {
             var wasUsingStageVideo:Boolean = usingStageVideo == true;
             usingStageVideo = stageEvent.availability == StageVideoAvailability.AVAILABLE;
-            extCall("log", ["STAGE VIDEO AVAILABLE: " + usingStageVideo]);
+            log("STAGE VIDEO AVAILABLE: " + usingStageVideo);
             if (usingStageVideo) {
                 if (stageVideo == null) {
                     stageVideo = stage.stageVideos[0];
@@ -165,12 +162,12 @@ package
 
         private function onStageVideoRenderStateChange(stageVideoEvent:StageVideoEvent):void {
             resize();
-            extCall("log", ["STAGE RENDER STATE: " + stageVideoEvent.status]);
+            log("STAGE RENDER STATE: " + stageVideoEvent.status);
         }
 
         private function onVideoRenderStateChange(videoEvent:VideoEvent):void {
             resize();
-            extCall("log", ["RENDER STATE: " + videoEvent.status]);
+            log("RENDER STATE: " + videoEvent.status);
         }
 
         private function setupTimer():void {
@@ -225,8 +222,14 @@ package
             var leftPadding:Number = 0;
             var topPadding:Number = 0;
 
-            if (videoWidth == stageWidth &&
-                videoHeight == stageHeight){
+            if (usingStageVideo) {
+                // not sure why this is needed...
+                // videoWidth = stageVideo.videoWidth;
+                // videoHeight = stageVideo.videoHeight;
+                // videoAspect = Math.round(videoWidth / videoHeight);
+            }
+
+            if (videoWidth == stageWidth && videoHeight == stageHeight){
                 newWidth = videoWidth;
                 newHeight = videoHeight;
             } else if (videoAspect == stageAspect) {
@@ -246,7 +249,8 @@ package
                 leftPadding = Math.round( (stageWidth-videoPlayer.width)/2 );
                 topPadding = Math.round( (stageHeight-videoPlayer.height)/2 );
             }
-            extCall("log", ["NEW PIXELS: " + newWidth + "x" + newHeight + ", (" + leftPadding + ", " + topPadding + ")"]);
+            log("NEW SIZE: " + newWidth + "x" + newHeight);
+            log("NEW OFFSET: " + leftPadding + "x" + topPadding);
             if (usingStageVideo) {
                 stageVideoViewPort.x = leftPadding;
                 stageVideoViewPort.y = topPadding;
@@ -365,6 +369,10 @@ package
                 args.unshift(extNamespace+method);
                 ExternalInterface.call.apply(this, args);
             }
+        }
+
+        private function log(message:String):void {
+            extCall("log", [message]);
         }
     }
 
